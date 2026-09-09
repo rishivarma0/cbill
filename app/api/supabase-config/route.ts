@@ -1,12 +1,8 @@
-import { env } from 'cloudflare:workers';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const runtime = env as Cloudflare.Env;
-  const url = runtime.SUPABASE_URL || process.env.SUPABASE_URL;
-  const publishableKey =
-    runtime.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY;
+  const url = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
 
   if (!url || !publishableKey) {
     return Response.json({ error: 'Configuration unavailable' }, { status: 503 });

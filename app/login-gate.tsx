@@ -100,7 +100,7 @@ export default function LoginGate({ children }: { children: ReactNode }) {
     } catch (loginError) {
       setPassword("");
       const message = friendlyError(loginError, "Incorrect login details");
-      setError(message === "Network unavailable" ? message : "Incorrect login details");
+      setError(message.startsWith("Network") ? "Network unavailable. Please try again." : "Incorrect login details");
     } finally {
       setSubmitting(false);
     }
@@ -109,6 +109,11 @@ export default function LoginGate({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
+    setSubmitting(true);
+    void getSupabase()
+      .then((client) => client.auth.signOut({ scope: 'local' }))
+      .catch(() => setError('Could not finish signing out. Please retry.'))
+      .finally(() => setSubmitting(false));
   }, []);
 
   const contextValue = session ? { ...session, logout } : null;

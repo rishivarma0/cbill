@@ -12,12 +12,17 @@ export function getSupabase(): Promise<SupabaseClient> {
       .then(({ url, publishableKey }) =>
         createClient(url, publishableKey, {
           auth: {
+            storage: window.sessionStorage,
+            storageKey: 'room-current-auth-v3',
             persistSession: true,
             autoRefreshToken: true,
             detectSessionInUrl: false,
           },
         }),
-      );
+      ).catch((error: unknown) => {
+        clientPromise = null;
+        throw error;
+      });
   }
   return clientPromise;
 }

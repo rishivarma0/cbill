@@ -83,7 +83,11 @@ function localDateTime(value: string) {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
-function displayDate(value: string) {
+function displayDate(value: string, note?: string | null) {
+  if (note?.startsWith('Imported payment record: 20/22 August')) return '20/22 Aug 2026 · date unspecified';
+  if (note?.startsWith('Imported payment record:')) {
+    return new Date(value).toLocaleDateString('en-IN', {day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Kolkata'});
+  }
   return new Date(value).toLocaleString("en-IN", {
     day: "numeric",
     month: "short",
@@ -175,12 +179,13 @@ export default function Home() {
         (status) => {
           if (status === "SUBSCRIBED") {
             setLive("online");
+            void refresh().catch(() => setLive("reconnecting"));
           } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
             setLive("reconnecting");
           }
         },
       );
-    });
+    }).catch(() => setLive("reconnecting"));
     return () => {
       cancelled = true;
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
@@ -208,12 +213,14 @@ export default function Home() {
     setBusy(true);
     setError("");
     setMessage("");
+    let saved = false;
     try {
       await action();
+      saved = true;
       await refresh();
       setMessage(success);
     } catch (actionError) {
-      setError(friendlyError(actionError, "That action could not be completed. Nothing was changed."));
+      setError(saved ? 'Saved successfully, but the latest display could not be refreshed. Refresh before submitting again.' : friendlyError(actionError, actionError instanceof Error ? actionError.message : 'Could not confirm the result. Refresh history before trying again.'));
     } finally {
       setBusy(false);
     }
@@ -231,6 +238,9 @@ export default function Home() {
       const client = await getSupabase();
       const previousNext = nextPayer?.username;
       await recordPayment(client, access, paidAmount, note);
+      setAmount("");
+      setNote("");
+      try {
       const [latestMembers, latestState] = await Promise.all([
         getBillingSnapshot(client, roomId),
         getRoomState(client, roomId),
@@ -246,8 +256,9 @@ export default function Home() {
         latestState.revision,
         candidate?.username,
       );
-      setAmount("");
-      setNote("");
+      } catch {
+        throw new Error('Payment saved, but the next turn could not be refreshed. Do not submit it again; refresh the page.');
+      }
     }, "Payment saved and synced.");
   }
 
@@ -380,6 +391,8 @@ export default function Home() {
               </div>
               {loading ? (
                 <div className="loading-row"><Loader2 className="spin" /> Loading the latest balance…</div>
+              ) : members.length === 0 ? (
+                <div className="loading-row">Billing status unavailable. Please retry.</div>
               ) : nextPayer ? (
                 <>
                   <div className="next-person">
@@ -449,7 +462,7 @@ export default function Home() {
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                 />
-                <Button className="primary-button full" type="submit" disabled={busy || loading}>
+                <Button className="primary-button full" type="submit" disabled={busy || loading || !me?.is_active}>
                   {busy ? <Loader2 className="spin" size={17} /> : <ArrowRight size={18} />}
                   {busy ? "Saving…" : "Save my payment"}
                 </Button>
@@ -502,7 +515,7 @@ export default function Home() {
                       <span className="avatar">{payment.display_name.slice(0, 1)}</span>
                       <div className="history-person">
                         <strong>{payment.display_name}</strong>
-                        <time dateTime={payment.effective_at}>{displayDate(payment.effective_at)}</time>
+                        <time dateTime={payment.effective_at}>{displayDate(payment.effective_at, payment.note)}</time>
                         {payment.note ? <span className="payment-note">{payment.note}</span> : null}
                       </div>
                       <div className="history-amount"><strong>{money(payment.amount)}</strong><span><Check size={12} /> Paid</span></div>
@@ -630,7 +643,7 @@ export default function Home() {
           <dialog open className="form-modal"><form onSubmit={submitRoommate}>
             <div className="modal-heading"><h2>{roommateDraft.username ? "Edit roommate" : "Add roommate"}</h2><Button type="button" variant="ghost" size="icon-sm" onClick={() => setRoommateDraft(null)}><X /></Button></div>
             <label htmlFor="roommate-username">Login ID</label>
-            <Input id="roommate-username" autoCapitalize="none" value={roommateDraft.username} disabled={Boolean(roommateDraft.username)} onChange={(event) => setRoommateDraft({ ...roommateDraft, username: event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} required />
+            <Input id="roommate-username" autoCapitalize="none" value={roommateDraft.username} onChange={(event) => setRoommateDraft({ ...roommateDraft, username: event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} required />
             <label htmlFor="roommate-name">Display name</label>
             <Input id="roommate-name" value={roommateDraft.displayName} onChange={(event) => setRoommateDraft({ ...roommateDraft, displayName: event.target.value })} required />
             <label htmlFor="roommate-password">{roommateDraft.username ? "New password" : "Password"}</label>

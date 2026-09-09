@@ -39,3 +39,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# accidental duplicate starter files
+/app/globals 2.css
+/app/page 2.tsx

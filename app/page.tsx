@@ -61,13 +61,12 @@ type InstallPrompt = Event & {
 };
 
 type RoommateDraft = {
+  isEditing: boolean;
   username: string;
   displayName: string;
   password: string;
   role: string;
 };
-
-const PROTECTED_ROOMMATES = new Set(["rishi", "mohan", "nandan"]);
 
 function money(value: number) {
   return new Intl.NumberFormat("en-IN", {
@@ -309,7 +308,7 @@ export default function Home() {
 
   async function submitRoommate(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!roommateDraft || !canManage) return;
+    if (!roommateDraft || !isOwner || !canManage) return;
     await runAction(async () => {
       const client = await getSupabase();
       await upsertRoommate(
@@ -325,7 +324,7 @@ export default function Home() {
   }
 
   async function toggleRoommate(roommate: Roommate) {
-    if (!canManage || PROTECTED_ROOMMATES.has(roommate.username)) return;
+    if (!isOwner || !canManage || roommate.username === username) return;
     await runAction(async () => {
       const client = await getSupabase();
       await setRoommateActive(client, roomId, roommate.username, !roommate.is_active);
@@ -552,27 +551,20 @@ export default function Home() {
               <div><h3>Billing cycle</h3><p>Add the configured ₹500 obligation to every active roommate.</p></div>
               <Button onClick={() => setCycleConfirm(true)}><Plus size={16} /> Start New Cycle</Button>
             </section>
-            {canManage ? (
+            {isOwner && canManage ? (
               <section className="owner-block">
                 <div className="section-heading"><div><p className="eyebrow">ACCESS</p><h3>Manage Roommates</h3></div><Users size={19} /></div>
                 <div className="roommate-list">
-                  {roommates.map((roommate) => {
-                    const protectedAccount = PROTECTED_ROOMMATES.has(roommate.username);
-                    return (
+                  {roommates.map((roommate) => (
                       <div className="roommate-row" key={roommate.username}>
                         <span className="avatar">{roommate.display_name.slice(0, 1)}</span>
                         <div><strong>{roommate.display_name}</strong><span>@{roommate.username} · {roommate.role}</span></div>
-                        {protectedAccount ? <span className="protected-label">Protected</span> : (
-                          <>
-                            <Button variant="ghost" size="sm" onClick={() => setRoommateDraft({ username: roommate.username, displayName: roommate.display_name, password: "", role: roommate.role })}>Edit</Button>
-                            <Button variant="outline" size="sm" onClick={() => toggleRoommate(roommate)} disabled={busy}>{roommate.is_active ? "Disable" : "Enable"}</Button>
-                          </>
-                        )}
+                        <Button variant="ghost" size="sm" onClick={() => setRoommateDraft({ isEditing: true, username: roommate.username, displayName: roommate.display_name, password: "", role: roommate.role })}>Edit</Button>
+                        {roommate.username === username ? <span className="protected-label">Current</span> : <Button variant="outline" size="sm" onClick={() => toggleRoommate(roommate)} disabled={busy}>{roommate.is_active ? "Disable" : "Enable"}</Button>}
                       </div>
-                    );
-                  })}
+                    ))}
                 </div>
-                <Button variant="outline" className="full" onClick={() => setRoommateDraft({ username: "", displayName: "", password: "", role: "member" })}>
+                <Button variant="outline" className="full" onClick={() => setRoommateDraft({ isEditing: false, username: "", displayName: "", password: "", role: "member" })}>
                   <Plus size={16} /> Add roommate
                 </Button>
                 <p className="security-note">Passwords are sent directly to the secure backend and are never displayed or saved on this device.</p>
@@ -638,19 +630,19 @@ export default function Home() {
         </div>
       ) : null}
 
-      {roommateDraft && canManage ? (
+      {roommateDraft && isOwner && canManage ? (
         <div className="modal-backdrop centered">
           <dialog open className="form-modal"><form onSubmit={submitRoommate}>
-            <div className="modal-heading"><h2>{roommateDraft.username ? "Edit roommate" : "Add roommate"}</h2><Button type="button" variant="ghost" size="icon-sm" onClick={() => setRoommateDraft(null)}><X /></Button></div>
+            <div className="modal-heading"><h2>{roommateDraft.isEditing ? "Edit roommate" : "Add roommate"}</h2><Button type="button" variant="ghost" size="icon-sm" onClick={() => setRoommateDraft(null)}><X /></Button></div>
             <label htmlFor="roommate-username">Login ID</label>
-            <Input id="roommate-username" autoCapitalize="none" value={roommateDraft.username} onChange={(event) => setRoommateDraft({ ...roommateDraft, username: event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} required />
+            <Input id="roommate-username" autoCapitalize="none" value={roommateDraft.username} disabled={roommateDraft.isEditing} onChange={(event) => setRoommateDraft({ ...roommateDraft, username: event.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, "") })} required />
             <label htmlFor="roommate-name">Display name</label>
             <Input id="roommate-name" value={roommateDraft.displayName} onChange={(event) => setRoommateDraft({ ...roommateDraft, displayName: event.target.value })} required />
-            <label htmlFor="roommate-password">{roommateDraft.username ? "New password" : "Password"}</label>
+            <label htmlFor="roommate-password">{roommateDraft.isEditing ? "New password" : "Password"}</label>
             <Input id="roommate-password" type="password" autoComplete="new-password" value={roommateDraft.password} onChange={(event) => setRoommateDraft({ ...roommateDraft, password: event.target.value })} required />
             <label htmlFor="roommate-role">Role</label>
             <select id="roommate-role" value={roommateDraft.role} onChange={(event) => setRoommateDraft({ ...roommateDraft, role: event.target.value })}>
-              <option value="member">Member</option><option value="admin">Admin</option>
+              <option value="member">Member</option><option value="admin">Admin</option>{roommateDraft.role === "owner" ? <option value="owner">Owner</option> : null}
             </select>
             <p className="security-note">The password is sent to the backend once. It will not be displayed again.</p>
             <Button className="primary-button full" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" /> : <Check />} Save roommate</Button>

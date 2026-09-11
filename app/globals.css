@@ -236,3 +236,7 @@ footer { padding: 30px 0 5px; color: #626a75; font-size: 11px; text-align: cente
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; animation-duration: .01ms !important; }
 }
+
+.room-switcher { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:24px; }
+.room-switcher select { flex:1; min-width:0; width:auto; }
+@media (max-width:600px) { .room-switcher label { width:100%; } .room-switcher button { width:100%; } }

@@ -70,10 +70,10 @@ export function friendlyError(error: unknown, fallback: string) {
   return fallback;
 }
 
-export async function joinRoom(client: SupabaseClient, loginId: string, password: string) {
+export async function joinRoom(client: SupabaseClient, loginId: string, password: string, roomSlug = ROOM_SLUG) {
   const username = loginId.trim().toLowerCase();
   const { data, error } = await client.rpc('join_room', {
-    p_room_slug: ROOM_SLUG,
+    p_room_slug: roomSlug.trim().toLowerCase(),
     p_login_id: username,
     p_password: password,
   });
@@ -290,4 +290,16 @@ export function subscribeToRoom(
   }
   channel.subscribe(onStatus);
   return channel;
+}
+
+export type AvailableRoom = { room_id: string; slug: string; display_name: string; can_pay: boolean; username: string | null };
+export async function listMyRooms(client: SupabaseClient): Promise<AvailableRoom[]> {
+  const { data, error } = await client.rpc('list_my_rooms');
+  if (error) throw new Error('Could not load your rooms.');
+  return data ?? [];
+}
+export async function createRoom(client: SupabaseClient, slug: string, name: string): Promise<string> {
+  const { data, error } = await client.rpc('owner_create_room', { p_slug: slug, p_display_name: name });
+  if (error || !data) throw new Error('Could not create the room. Check that its room ID is not already used.');
+  return data;
 }

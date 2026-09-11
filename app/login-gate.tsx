@@ -18,6 +18,8 @@ import {
   friendlyError,
   getAccess,
   joinRoom,
+  listMyRooms,
+  AvailableRoom,
 } from "@/lib/room-current";
 import { ensureAnonymousSession, getSupabase } from "@/lib/supabase";
 
@@ -29,6 +31,9 @@ type RoomSession = {
 
 type RoomContextValue = RoomSession & {
   logout: () => void;
+  rooms: AvailableRoom[];
+  switchRoom: (id: string) => Promise<void>;
+  refreshRooms: () => Promise<void>;
 };
 
 const RoomContext = createContext<RoomContextValue | null>(null);
@@ -43,6 +48,8 @@ export default function LoginGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<RoomSession | null>(null);
   const [checking, setChecking] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [rooms, setRooms] = useState<AvailableRoom[]>([]);
+  const [roomSlug, setRoomSlug] = useState("311");
   const [loginId, setLoginId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -55,13 +62,17 @@ export default function LoginGate({ children }: { children: ReactNode }) {
         const saved = sessionStorage.getItem(SESSION_KEY);
         if (!saved) return;
         const parsed = JSON.parse(saved) as { roomId?: string; username?: string };
-        if (!parsed.roomId || !parsed.username) return;
+        if (!parsed.roomId) return;
 
         const client = await getSupabase();
         await ensureAnonymousSession(client);
-        const access = await getAccess(client, parsed.roomId, parsed.username);
+        const available = await listMyRooms(client);
+        const selected = available.find((room) => room.room_id === parsed.roomId);
+        if (!selected) throw new Error("Room access expired");
+        setRooms(available);
+        const access = await getAccess(client, parsed.roomId, selected.username ?? "");
         if (!cancelled) {
-          setSession({ roomId: parsed.roomId, username: parsed.username, access });
+          setSession({ roomId: parsed.roomId, username: selected.username ?? "", access });
         }
       } catch {
         sessionStorage.removeItem(SESSION_KEY);
@@ -84,7 +95,7 @@ export default function LoginGate({ children }: { children: ReactNode }) {
     try {
       const client = await getSupabase();
       await ensureAnonymousSession(client);
-      const joined = await joinRoom(client, loginId, password);
+      const joined = await joinRoom(client, loginId, password, roomSlug);
       const access = await getAccess(client, joined.roomId, joined.username);
       const nextSession = {
         roomId: joined.roomId,
@@ -95,6 +106,7 @@ export default function LoginGate({ children }: { children: ReactNode }) {
         SESSION_KEY,
         JSON.stringify({ roomId: nextSession.roomId, username: nextSession.username }),
       );
+      setRooms(await listMyRooms(client));
       setPassword("");
       setSession(nextSession);
     } catch (loginError) {
@@ -116,7 +128,24 @@ export default function LoginGate({ children }: { children: ReactNode }) {
       .finally(() => setSubmitting(false));
   }, []);
 
-  const contextValue = session ? { ...session, logout } : null;
+
+  async function refreshRooms() {
+    setRooms(await listMyRooms(await getSupabase()));
+  }
+  async function switchRoom(id: string) {
+    if (!session) return;
+    const client = await getSupabase();
+    const available = await listMyRooms(client);
+    const room = available.find((item) => item.room_id === id);
+    if (!room) throw new Error("Room access unavailable");
+    const access = await getAccess(client, id, room.username ?? "");
+    const next = { roomId: id, username: room.username ?? "", access };
+    setRooms(available);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ roomId: id, username: next.username }));
+    setSession(next);
+  }
+  const contextValue = session ? { ...session, logout, rooms, switchRoom, refreshRooms } : null;
+
 
   if (checking) {
     return (
@@ -135,11 +164,13 @@ export default function LoginGate({ children }: { children: ReactNode }) {
           <div className="brand-mark" aria-hidden="true">
             <Zap size={24} />
           </div>
-          <p className="eyebrow">ROOM 311</p>
+          <p className="eyebrow">YOUR ROOM LEDGER</p>
           <h1>Room Current</h1>
           <p className="login-subtitle">Track every payment and know who pays next.</p>
 
           <form className="login-form" onSubmit={handleLogin}>
+            <label htmlFor="login-room">Room ID</label>
+            <Input id="login-room" value={roomSlug} autoCapitalize="none" maxLength={40} onChange={(event) => setRoomSlug(event.target.value)} required />
             <label htmlFor="login-id">Login ID</label>
             <Input
               id="login-id"
@@ -176,5 +207,5 @@ export default function LoginGate({ children }: { children: ReactNode }) {
     );
   }
 
-  return <RoomContext.Provider value={contextValue}>{children}</RoomContext.Provider>;
+  return <RoomContext.Provider value={contextValue}><div key={session?.roomId}>{children}</div></RoomContext.Provider>;
 }

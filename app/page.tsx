@@ -34,6 +34,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useRoomSession } from "./login-gate";
 import {
   BillingMember,
+  createRoom,
   Payment,
   RoomState,
   Roommate,
@@ -97,7 +98,13 @@ function displayDate(value: string, note?: string | null) {
 }
 
 export default function Home() {
-  const { roomId, username, access, logout } = useRoomSession();
+  const { roomId, username, access, logout, rooms, switchRoom, refreshRooms } = useRoomSession();
+  const currentRoom = rooms.find((room) => room.room_id === roomId);
+  const roomLabel = currentRoom?.slug ?? "";
+  const canPay = currentRoom?.can_pay === true;
+  const [newRoomOpen, setNewRoomOpen] = useState(false);
+  const [newRoomId, setNewRoomId] = useState("");
+  const [newRoomName, setNewRoomName] = useState("");
   const isOwner = access.role === "owner";
   const canEdit = isOwner && access.canEditHistory;
   const canManage = isOwner && access.canManageRoommates;
@@ -141,7 +148,7 @@ export default function Home() {
     const initialRefresh = setTimeout(() => {
       void refresh()
         .catch((refreshError) => {
-          if (!cancelled) setError(friendlyError(refreshError, "Could not load Room 311."));
+          if (!cancelled) setError(friendlyError(refreshError, "Could not load this room."));
         })
         .finally(() => {
           if (!cancelled) setLoading(false);
@@ -227,6 +234,7 @@ export default function Home() {
 
   async function submitPayment(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canPay) return;
     const paidAmount = Number(amount);
     if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
       setError("Enter a valid payment amount.");
@@ -337,7 +345,7 @@ export default function Home() {
         <a className="brand" href="#top" aria-label="Room Current home">
           <span className="brand-icon"><Zap size={20} fill="currentColor" /></span>
           <span>Room Current</span>
-          <span className="room-tag">311</span>
+          <span className="room-tag">{roomLabel}</span>
         </a>
         <div className="top-actions">
           {installPrompt ? (
@@ -363,7 +371,7 @@ export default function Home() {
       <main id="top" className="dashboard">
         <div className="page-heading">
           <div>
-            <p className="eyebrow">ROOM 311 · ELECTRICITY</p>
+            <p className="eyebrow">ROOM {roomLabel} · ELECTRICITY</p>
           </div>
           <span className={`live-label ${live}`}>
             {live === "online" ? <Wifi size={14} /> : <WifiOff size={14} />}
@@ -371,6 +379,14 @@ export default function Home() {
           </span>
         </div>
 
+        {isOwner ? <div className="room-switcher">
+          <label htmlFor="selected-room">Viewing room</label>
+          <select id="selected-room" value={roomId} disabled={busy} onChange={(event) => {
+            setBusy(true);
+            void switchRoom(event.target.value).catch(() => { setError("Could not switch rooms. Please retry."); setBusy(false); });
+          }}>{rooms.map((room) => <option key={room.room_id} value={room.room_id}>{room.slug} · {room.display_name}</option>)}</select>
+          <Button onClick={() => setNewRoomOpen(true)}><Plus size={16} /> Create room</Button>
+        </div> : null}
         {message ? <output className="notice success"><Check size={17} />{message}</output> : null}
         {error ? (
           <div className="notice error" role="alert">
@@ -391,7 +407,7 @@ export default function Home() {
               {loading ? (
                 <div className="loading-row"><Loader2 className="spin" /> Loading the latest balance…</div>
               ) : members.length === 0 ? (
-                <div className="loading-row">Billing status unavailable. Please retry.</div>
+                <div className="loading-row">No roommates yet. Add roommates in Owner controls, then start the first billing cycle.</div>
               ) : nextPayer ? (
                 <>
                   <div className="next-person">
@@ -423,7 +439,7 @@ export default function Home() {
               </div>
             </article>
 
-            <article className="panel payment-card">
+            {canPay ? <article className="panel payment-card">
               <div className="section-heading">
                 <div><p className="eyebrow">YOUR PAYMENT</p><h2>Record a payment</h2></div>
                 <Zap size={20} />
@@ -466,7 +482,7 @@ export default function Home() {
                   {busy ? "Saving…" : "Save my payment"}
                 </Button>
               </form>
-            </article>
+            </article> : <article className="panel payment-card"><h2>Room overview</h2><p className="section-note">Only a member signed in to this room can record their own payment. Use Owner controls to manage this room.</p></article>}
           </section>
 
           <section className="secondary-column">
@@ -540,6 +556,31 @@ export default function Home() {
         <footer>Made with ❤️ by Rishi Varma</footer>
       </main>
 
+      {newRoomOpen && isOwner ? (
+        <div className="modal-backdrop centered"><dialog open className="form-modal" aria-label="Create room">
+          <form onSubmit={async (event) => {
+            event.preventDefault();
+            if (busy) return;
+            setBusy(true); setError("");
+            let created = false;
+            try {
+              const id = await createRoom(await getSupabase(), newRoomId, newRoomName);
+              created = true;
+              await refreshRooms();
+              await switchRoom(id);
+            } catch (failure) {
+              setError(created ? "Room created. Refresh to see it before creating another." : friendlyError(failure, "Could not create room. Choose a unique room ID and try again."));
+              setNewRoomOpen(false); setBusy(false);
+            }
+          }}>
+            <div className="modal-heading"><h2>Create room</h2><Button type="button" variant="ghost" onClick={() => setNewRoomOpen(false)} disabled={busy}><X /></Button></div>
+            <label htmlFor="new-room-id">Room ID</label><Input id="new-room-id" value={newRoomId} onChange={(event) => setNewRoomId(event.target.value.toLowerCase())} pattern="[a-z0-9][a-z0-9_-]{0,39}" maxLength={40} required />
+            <label htmlFor="new-room-name">Room name</label><Input id="new-room-name" value={newRoomName} onChange={(event) => setNewRoomName(event.target.value)} maxLength={60} required />
+            <p className="section-note">Add roommates after creating the room. Start its first ₹500 cycle when everyone is ready.</p>
+            <Button type="submit" className="full" disabled={busy}>{busy ? "Creating…" : "Create room"}</Button>
+          </form>
+        </dialog></div>
+      ) : null}
       {ownerOpen && isOwner ? (
         <div className="modal-backdrop">
           <dialog open className="owner-panel" aria-label="Owner controls">
@@ -639,10 +680,10 @@ export default function Home() {
             <label htmlFor="roommate-name">Display name</label>
             <Input id="roommate-name" value={roommateDraft.displayName} onChange={(event) => setRoommateDraft({ ...roommateDraft, displayName: event.target.value })} required />
             <label htmlFor="roommate-password">{roommateDraft.isEditing ? "New password" : "Password"}</label>
-            <Input id="roommate-password" type="password" autoComplete="new-password" value={roommateDraft.password} onChange={(event) => setRoommateDraft({ ...roommateDraft, password: event.target.value })} required />
+            <Input id="roommate-password" type="password" minLength={6} autoComplete="new-password" value={roommateDraft.password} onChange={(event) => setRoommateDraft({ ...roommateDraft, password: event.target.value })} required />
             <label htmlFor="roommate-role">Role</label>
-            <select id="roommate-role" value={roommateDraft.role} onChange={(event) => setRoommateDraft({ ...roommateDraft, role: event.target.value })}>
-              <option value="member">Member</option><option value="admin">Admin</option>{roommateDraft.role === "owner" ? <option value="owner">Owner</option> : null}
+            <select id="roommate-role" disabled={roommateDraft.role === "owner"} value={roommateDraft.role} onChange={(event) => setRoommateDraft({ ...roommateDraft, role: event.target.value })}>
+              <option value="member">Member</option>{roommateDraft.role === "owner" ? <option value="owner">Owner</option> : null}
             </select>
             <p className="security-note">The password is sent to the backend once. It will not be displayed again.</p>
             <Button className="primary-button full" type="submit" disabled={busy}>{busy ? <Loader2 className="spin" /> : <Check />} Save roommate</Button>

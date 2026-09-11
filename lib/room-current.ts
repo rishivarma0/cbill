@@ -303,3 +303,8 @@ export async function createRoom(client: SupabaseClient, slug: string, name: str
   if (error || !data) throw new Error('Could not create the room. Check that its room ID is not already used.');
   return data;
 }
+
+export async function updateRoom(client: SupabaseClient, roomId: string, slug: string, name: string) {
+  const { error } = await client.rpc('owner_update_room', { p_room_id: roomId, p_slug: slug, p_display_name: name });
+  if (error) throw new Error('Could not save room details. Use a unique Room ID and try again.');
+}

@@ -34,6 +34,7 @@ import { useRoomSession } from "./login-gate";
 import {
   BillingMember,
   createRoom,
+  updateRoom,
   Payment,
   RoomState,
   Roommate,
@@ -101,6 +102,7 @@ export default function Home() {
   const currentRoom = rooms.find((room) => room.room_id === roomId);
   const roomLabel = currentRoom?.slug ?? "";
   const canPay = currentRoom?.can_pay === true;
+  const [roomDraft, setRoomDraft] = useState<{ slug: string; name: string } | null>(null);
   const [newRoomOpen, setNewRoomOpen] = useState(false);
   const [newRoomId, setNewRoomId] = useState("");
   const [newRoomName, setNewRoomName] = useState("");
@@ -567,7 +569,28 @@ export default function Home() {
           </form>
         </dialog></div>
       ) : null}
-      {ownerOpen && isOwner && !newRoomOpen ? (
+      {roomDraft && isOwner ? (
+        <div className="modal-backdrop centered"><dialog open className="form-modal" aria-label="Edit room">
+          <form onSubmit={async (event) => {
+            event.preventDefault();
+            await runAction(async () => {
+              await updateRoom(await getSupabase(), roomId, roomDraft.slug, roomDraft.name);
+              setRoomDraft(null);
+              await refreshRooms();
+            }, "Room details updated.");
+          }}>
+            <div className="modal-heading"><h2>Edit room</h2><Button type="button" variant="ghost" disabled={busy} onClick={() => setRoomDraft(null)} aria-label="Close edit room"><X /></Button></div>
+            <label htmlFor="edit-room-id">Room ID</label>
+            <Input id="edit-room-id" value={roomDraft.slug} onChange={(event) => setRoomDraft({ ...roomDraft, slug: event.target.value.toLowerCase() })} pattern="[a-z0-9][a-z0-9_-]{0,39}" maxLength={40} required />
+            <label htmlFor="edit-room-name">Room name</label>
+            <Input id="edit-room-name" value={roomDraft.name} onChange={(event) => setRoomDraft({ ...roomDraft, name: event.target.value })} maxLength={60} required />
+            <p className="section-note">Members will use the updated Room ID at their next login. Payments and balances stay with this room.</p>
+            {error ? <p className="form-error" role="alert">{error}</p> : null}
+            <Button type="submit" className="full" disabled={busy}>{busy ? "Saving…" : "Save room"}</Button>
+          </form>
+        </dialog></div>
+      ) : null}
+      {ownerOpen && isOwner && !newRoomOpen && !roomDraft ? (
         <div className="modal-backdrop">
           <dialog open className="owner-panel" aria-label="Owner settings">
             <div className="modal-heading">
@@ -587,6 +610,10 @@ export default function Home() {
         </div> : null}
             {message ? <output className="notice success">{message}</output> : null}
             {error ? <p className="notice error" role="alert">{error}</p> : null}
+            <section className="owner-section">
+              <div><h3>{currentRoom?.display_name}</h3><p>Room ID: {roomLabel}</p></div>
+              <Button variant="outline" disabled={busy} onClick={() => { setError(""); setRoomDraft({ slug: roomLabel, name: currentRoom?.display_name ?? "" }); }}>Edit room</Button>
+            </section>
             <section className="owner-section">
               <div><h3>Billing cycle</h3><p>Add the configured ₹500 obligation to every active roommate.</p></div>
               <Button onClick={() => setCycleConfirm(true)}><Plus size={16} /> Start New Cycle</Button>

@@ -12,7 +12,6 @@ import {
   ArrowRight,
   Check,
   Download,
-  Edit3,
   History,
   Loader2,
   LogOut,
@@ -379,17 +378,6 @@ export default function Home() {
           </span>
         </div>
 
-        {isOwner ? <div className="room-switcher">
-          <label htmlFor="selected-room">Viewing room</label>
-          <select id="selected-room" value={roomId} disabled={busy} onChange={(event) => {
-            if (event.target.value === "create-room") {
-              setNewRoomOpen(true);
-              return;
-            }
-            setBusy(true);
-            void switchRoom(event.target.value).catch(() => { setError("Could not switch rooms. Please retry."); setBusy(false); });
-          }}>{rooms.map((room) => <option key={room.room_id} value={room.room_id}>{room.slug} · {room.display_name}</option>)}<option value="create-room">＋ Create room</option></select>
-        </div> : null}
         {message ? <output className="notice success"><Check size={17} />{message}</output> : null}
         {error ? (
           <div className="notice error" role="alert">
@@ -410,7 +398,7 @@ export default function Home() {
               {loading ? (
                 <div className="loading-row"><Loader2 className="spin" /> Loading the latest balance…</div>
               ) : members.length === 0 ? (
-                <div className="loading-row">No roommates yet. Add roommates in Owner controls, then start the first billing cycle.</div>
+                <div className="loading-row">No roommates yet. Add roommates in Owner settings, then start the first billing cycle.</div>
               ) : nextPayer ? (
                 <>
                   <div className="next-person">
@@ -485,7 +473,7 @@ export default function Home() {
                   {busy ? "Saving…" : "Save my payment"}
                 </Button>
               </form>
-            </article> : <article className="panel payment-card"><h2>Room overview</h2><p className="section-note">Only a member signed in to this room can record their own payment. Use Owner controls to manage this room.</p></article>}
+            </article> : <article className="panel payment-card"><h2>Room overview</h2><p className="section-note">Only a member signed in to this room can record their own payment. Use Owner settings to manage this room.</p></article>}
           </section>
 
           <section className="secondary-column">
@@ -537,12 +525,7 @@ export default function Home() {
                         {payment.note ? <span className="payment-note">{payment.note}</span> : null}
                       </div>
                       <div className="history-amount"><strong>{money(payment.amount)}</strong><span><Check size={12} /> Paid</span></div>
-                      {canEdit ? (
-                        <div className="history-actions">
-                          <Button variant="ghost" size="icon-sm" onClick={() => setEditPayment(payment)} aria-label={`Edit ${payment.display_name} payment`}><Edit3 size={15} /></Button>
-                          <Button variant="ghost" size="icon-sm" className="danger" onClick={() => setDeleteTarget(payment)} aria-label={`Delete ${payment.display_name} payment`}><Trash2 size={15} /></Button>
-                        </div>
-                      ) : null}
+
                     </li>
                   ))}
                 </ol>
@@ -551,7 +534,7 @@ export default function Home() {
 
             {isOwner ? (
               <Button className="owner-entry" variant="outline" onClick={() => setOwnerOpen(true)}>
-                <Settings2 size={17} /> Owner controls
+                <Settings2 size={17} /> Owner settings
               </Button>
             ) : null}
           </section>
@@ -584,13 +567,26 @@ export default function Home() {
           </form>
         </dialog></div>
       ) : null}
-      {ownerOpen && isOwner ? (
+      {ownerOpen && isOwner && !newRoomOpen ? (
         <div className="modal-backdrop">
-          <dialog open className="owner-panel" aria-label="Owner controls">
+          <dialog open className="owner-panel" aria-label="Owner settings">
             <div className="modal-heading">
-              <div><span className="owner-badge">Owner</span><h2>Room controls</h2></div>
+              <div><span className="owner-badge">Owner</span><h2>Owner settings · {roomLabel}</h2></div>
               <Button variant="ghost" size="icon-sm" onClick={() => setOwnerOpen(false)} aria-label="Close owner controls"><X /></Button>
             </div>
+        {isOwner ? <div className="room-switcher">
+          <label htmlFor="selected-room">Viewing room</label>
+          <select id="selected-room" value={roomId} disabled={busy} onChange={(event) => {
+            if (event.target.value === "create-room") {
+              setNewRoomOpen(true);
+              return;
+            }
+            setBusy(true);
+            void switchRoom(event.target.value).catch(() => { setError("Could not switch rooms. Please retry."); setBusy(false); });
+          }}>{rooms.map((room) => <option key={room.room_id} value={room.room_id}>{room.slug} · {room.display_name}</option>)}<option value="create-room">＋ Create room</option></select>
+        </div> : null}
+            {message ? <output className="notice success">{message}</output> : null}
+            {error ? <p className="notice error" role="alert">{error}</p> : null}
             <section className="owner-section">
               <div><h3>Billing cycle</h3><p>Add the configured ₹500 obligation to every active roommate.</p></div>
               <Button onClick={() => setCycleConfirm(true)}><Plus size={16} /> Start New Cycle</Button>
@@ -612,6 +608,24 @@ export default function Home() {
                   <Plus size={16} /> Add roommate
                 </Button>
                 <p className="security-note">Passwords are sent directly to the secure backend and are never displayed or saved on this device.</p>
+              </section>
+            ) : null}
+            {canEdit ? (
+              <section className="owner-block">
+                <div className="section-heading"><h3>Edit payment history</h3><Receipt size={19} /></div>
+                {activePayments.length === 0 ? <p className="section-note">No payments yet.</p> : (
+                  <div className="deleted-list owner-payment-list">
+                    {activePayments.map((payment) => (
+                      <div key={payment.id}>
+                        <span><strong>{payment.display_name} · {money(payment.amount)}</strong><small>{displayDate(payment.effective_at, payment.note)}</small>{payment.note ? <small>{payment.note}</small> : null}</span>
+                        <div className="history-actions">
+                          <Button variant="outline" size="sm" onClick={() => setEditPayment(payment)} disabled={busy} aria-label={`Edit ${payment.display_name} payment`}>Edit</Button>
+                          <Button variant="ghost" size="sm" className="danger" onClick={() => setDeleteTarget(payment)} disabled={busy} aria-label={`Delete ${payment.display_name} payment`}>Delete</Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             ) : null}
             {canEdit ? (

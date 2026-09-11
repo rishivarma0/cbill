@@ -382,10 +382,13 @@ export default function Home() {
         {isOwner ? <div className="room-switcher">
           <label htmlFor="selected-room">Viewing room</label>
           <select id="selected-room" value={roomId} disabled={busy} onChange={(event) => {
+            if (event.target.value === "create-room") {
+              setNewRoomOpen(true);
+              return;
+            }
             setBusy(true);
             void switchRoom(event.target.value).catch(() => { setError("Could not switch rooms. Please retry."); setBusy(false); });
-          }}>{rooms.map((room) => <option key={room.room_id} value={room.room_id}>{room.slug} · {room.display_name}</option>)}</select>
-          <Button onClick={() => setNewRoomOpen(true)}><Plus size={16} /> Create room</Button>
+          }}>{rooms.map((room) => <option key={room.room_id} value={room.room_id}>{room.slug} · {room.display_name}</option>)}<option value="create-room">＋ Create room</option></select>
         </div> : null}
         {message ? <output className="notice success"><Check size={17} />{message}</output> : null}
         {error ? (
